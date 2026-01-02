@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import ThreeGlobe from 'three-globe';
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import * as satellite from 'satellite.js';
+import { SatelliteManager } from './SatelliteManager.js';
 import './style.css';
 
 // Configuration
@@ -127,6 +128,9 @@ const Globe = new ThreeGlobe()
     satelliteMesh = new THREE.Mesh(geometry, material);
     return satelliteMesh;
   });
+
+const satelliteManager = new SatelliteManager(Globe);
+satelliteManager.init();
 
 // Scene Setup
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -301,6 +305,8 @@ function updateSatelliteInfo(d) {
   if (!isPaused) {
     currentTime = new Date(currentTime.getTime() + (1000 / 60) * TIME_SCALE);
   }
+
+  satelliteManager.update(currentTime);
 
   timeLogger.innerText = `UTC ${currentTime.toISOString().replace('T', ' ').slice(0, 19)} | GLOBAL SURVEILLANCE ACTIVE`;
 

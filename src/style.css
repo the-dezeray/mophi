@@ -71,6 +71,47 @@ body.hovering-satellite {
   color: var(--text-muted);
 }
 
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--glass-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  margin-top: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  display: none;
+}
+
+.search-result-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+
+.search-result-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+}
+
+.search-result-item .sat-name {
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.search-result-item .sat-id {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 .search-icon {
   color: var(--accent-primary);
   font-size: 12px;

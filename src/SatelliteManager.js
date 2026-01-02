@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as satellite from 'satellite.js';
 
 export class SatelliteManager {
     constructor(globe) {
@@ -16,6 +17,7 @@ export class SatelliteManager {
         this.selectedIndex = -1;
         this.raycaster = new THREE.Raycaster();
         this.raycaster.params.Points.threshold = 2;
+        this.lastScale = 1;
     }
 
     async init() {
@@ -73,6 +75,7 @@ export class SatelliteManager {
         const SCALE = GLOBE_RADIUS / EARTH_RADIUS_KM;
         let validCount = 0;
         this.currentPositions = positions;
+        const currentScale = this.lastScale || 1;
 
         for (let i = 0; i < this.count; i++) {
             const x = positions[i * 3];
@@ -93,7 +96,7 @@ export class SatelliteManager {
                 const threeZ = x * SCALE;
 
                 this.dummy.position.set(threeX, threeY, threeZ);
-                this.dummy.scale.set(1, 1, 1);
+                this.dummy.scale.set(currentScale, currentScale, currentScale);
                 this.dummy.lookAt(0, 0, 0); 
             }
             
@@ -107,6 +110,27 @@ export class SatelliteManager {
         
         // Update colors based on hover/selection
         this.updateColors();
+    }
+
+    updateSatelliteScale(camera) {
+        if (!this.mesh || !this.currentPositions) return;
+        
+        const SAT_REFERENCE_CAMERA_DISTANCE = 800;
+        const SAT_WORLD_RADIUS_AT_REFERENCE = 0.6;
+        const SAT_WORLD_RADIUS_MIN = 0.2;
+        const SAT_WORLD_RADIUS_MAX = 1.5;
+
+        const cameraDistance = camera.position.length();
+        const worldRadius = THREE.MathUtils.clamp(
+          (cameraDistance / SAT_REFERENCE_CAMERA_DISTANCE) * SAT_WORLD_RADIUS_AT_REFERENCE,
+          SAT_WORLD_RADIUS_MIN,
+          SAT_WORLD_RADIUS_MAX
+        );
+        
+        if (Math.abs(this.lastScale - worldRadius) < 0.0001) return;
+        this.lastScale = worldRadius;
+        
+        this.updateMesh(this.currentPositions);
     }
 
     updateColors() {
@@ -187,6 +211,58 @@ export class SatelliteManager {
         return -1;
     }
 
+    searchSatellites(query, limit = 5) {
+        const lowerQuery = query.toLowerCase();
+        const results = [];
+        
+        for (let i = 0; i < this.satelliteData.length; i++) {
+            if (results.length >= limit) break;
+            
+            const sat = this.satelliteData[i];
+            const id = String(sat[0]);
+            const name = String(sat[1]).toLowerCase();
+            
+            if (id.includes(lowerQuery) || name.includes(lowerQuery)) {
+                results.push({
+                    index: i,
+                    id: sat[0],
+                    name: sat[1]
+                });
+            }
+        }
+        return results;
+    }
+
+    getSatrec(index) {
+        if (index < 0 || index >= this.satelliteData.length) return null;
+        
+        const satellite = this.satelliteData[index];
+        // satellite data format: [id, name, epoch, i, o, e, p, m, n, b]
+        const epoch = satellite[2];
+        const inclination = satellite[3];
+        const raan = satellite[4];
+        const eccentricity = satellite[5];
+        const argOfPerigee = satellite[6];
+        const meanAnomaly = satellite[7];
+        const meanMotion = satellite[8];
+        const bstar = satellite[9];
+        
+        // Create satrec manually
+        return {
+            no: meanMotion * (2 * Math.PI / 1440),
+            inclo: inclination * (Math.PI / 180),
+            nodeo: raan * (Math.PI / 180),
+            ecco: eccentricity,
+            argpo: argOfPerigee * (Math.PI / 180),
+            mo: meanAnomaly * (Math.PI / 180),
+            bstar: bstar,
+            epochyr: new Date(epoch * 1000).getUTCFullYear() % 100,
+            epochdays: this.getDayOfYear(new Date(epoch * 1000)),
+            jdsatepoch: (epoch / 86400.0) + 2440587.5 // Approximate JD from unix timestamp
+        };
+    }
+
+
     getSelectedPosition() {
         if (this.selectedIndex < 0 || !this.currentPositions) return null;
         
@@ -205,5 +281,62 @@ export class SatelliteManager {
         const threeZ = x * SCALE;
         
         return new THREE.Vector3(threeX, threeY, threeZ);
+    }
+
+    async calculateOrbitPath(satData, globe, currentTime, numPoints = 100) {
+        const points = [];
+        
+        // satellite data format: [id, name, epoch, i, o, e, p, m, n, b]
+        const epoch = satData[2];
+        const inclination = satData[3];
+        const raan = satData[4];
+        const eccentricity = satData[5];
+        const argOfPerigee = satData[6];
+        const meanAnomaly = satData[7];
+        const meanMotion = satData[8];
+        const bstar = satData[9];
+        
+        // Create satrec from orbital elements
+        const satrec = {
+            no: meanMotion * (2 * Math.PI / 1440),
+            inclo: inclination * (Math.PI / 180),
+            nodeo: raan * (Math.PI / 180),
+            ecco: eccentricity,
+            argpo: argOfPerigee * (Math.PI / 180),
+            mo: meanAnomaly * (Math.PI / 180),
+            bstar: bstar,
+            epochyr: new Date(epoch * 1000).getUTCFullYear() % 100,
+            epochdays: this.getDayOfYear(new Date(epoch * 1000))
+        };
+        
+        const periodMinutes = 1440 / meanMotion;
+        const periodMs = periodMinutes * 60 * 1000;
+        const EARTH_RADIUS_KM = 6371;
+        
+        for (let i = 0; i <= numPoints; i++) {
+            const time = new Date(currentTime.getTime() + (periodMs / numPoints) * i);
+            const gmst = satellite.gstime(time);
+            const positionAndVelocity = satellite.propagate(satrec, time);
+            const positionEci = positionAndVelocity.position;
+            
+            if (positionEci && typeof positionEci.x === 'number') {
+                const gdPos = satellite.eciToGeodetic(positionEci, gmst);
+                const lat = satellite.radiansToDegrees(gdPos.latitude);
+                const lng = satellite.radiansToDegrees(gdPos.longitude);
+                const alt = gdPos.height / EARTH_RADIUS_KM;
+                
+                const coords = globe.getCoords(lat, lng, alt);
+                if (coords) points.push(new THREE.Vector3(coords.x, coords.y, coords.z));
+            }
+        }
+        
+        return points;
+    }
+
+    getDayOfYear(date) {
+        const start = new Date(date.getFullYear(), 0, 0);
+        const diff = date - start;
+        const oneDay = 1000 * 60 * 60 * 24;
+        return Math.floor(diff / oneDay);
     }
 }

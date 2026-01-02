@@ -1,25 +1,15 @@
 import * as THREE from 'three';
 import ThreeGlobe from 'three-globe';
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
-import * as satellite from 'satellite.js';
 import { SatelliteManager } from './SatelliteManager.js';
 import './style.css';
-
-// Configuration
-const SAT_ID = '63216'; // BOTSAT-1
-const CELESTRAK_URL = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${SAT_ID}&FORMAT=TLE`;
-const CACHE_KEY = `tle-${SAT_ID}`;
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-const EARTH_RADIUS_KM = 6371;
 
 // Global State
 let TIME_SCALE = 60;
 let currentTime = new Date();
 let isPaused = false;
 let orbitVisible = false;
-let orbitalPeriodMinutes = 0;
 let cameraMode = 'FREE'; // FREE, FOLLOW, NADIR
-let satData = [{ satrec: null, name: 'BOTSAT-1', lat: 0, lng: 0, alt: 0, velocity: 0 }];
 
 // UI Elements
 const timeLogger = document.createElement('div');
@@ -33,6 +23,7 @@ searchContainer.innerHTML = `
   <span class="search-icon">🔍</span>
   <input type="text" id="sat-search" placeholder="Search by NORAD ID or Name...">
   <div class="loader" id="search-loader"></div>
+  <div class="search-results" id="search-results"></div>
 `;
 document.body.appendChild(searchContainer);
 
@@ -102,32 +93,11 @@ controlsPanel.innerHTML = `
 `;
 document.body.appendChild(controlsPanel);
 
-// Satellite mesh reference for dynamic scaling
-let satelliteMesh = null;
-const SAT_REFERENCE_CAMERA_DISTANCE = 800;
-const SAT_WORLD_RADIUS_AT_REFERENCE = 0.15;
-const SAT_WORLD_RADIUS_MIN = 0.05;
-const SAT_WORLD_RADIUS_MAX = 0.4;
-
 const Globe = new ThreeGlobe()
   .globeImageUrl('//cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg')
   .showAtmosphere(true)
   .atmosphereColor('#5da9ff')
-  .atmosphereAltitude(0.15)
-  .particleLat('lat')
-  .particleLng('lng')
-  .particleAltitude('alt')
-  .objectLat('lat')
-  .objectLng('lng')
-  .objectAltitude('alt')
-  .objectThreeObject(() => {
-    const geometry = new THREE.SphereGeometry(1, 32, 32);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-    });
-    satelliteMesh = new THREE.Mesh(geometry, material);
-    return satelliteMesh;
-  });
+  .atmosphereAltitude(0.15);
 
 const satelliteManager = new SatelliteManager(Globe);
 satelliteManager.init();
@@ -155,56 +125,6 @@ const tbControls = new TrackballControls(camera, renderer.domElement);
 tbControls.rotateSpeed = 5;
 tbControls.zoomSpeed = 0.8;
 
-// Data Fetching
-async function getTLEData(id) {
-  const url = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${id}&FORMAT=TLE`;
-  const cacheKey = `tle-${id}`;
-  const now = Date.now();
-  const cached = localStorage.getItem(cacheKey);
-
-  if (cached) {
-    const { timestamp, data } = JSON.parse(cached);
-    if (now - timestamp < CACHE_DURATION) return data;
-  }
-
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Network response was not ok');
-    const text = await response.text();
-    if (text.includes('No GP data found')) throw new Error('Satellite not found');
-    localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: text }));
-    return text;
-  } catch (err) {
-    if (cached) return JSON.parse(cached).data;
-    throw err;
-  }
-}
-
-function calculateOrbit(satrec, startTime, numPoints = 100) {
-  const points = [];
-  const meanMotion = satrec.no * (1440 / (2 * Math.PI));
-  const periodMinutes = 1440 / meanMotion;
-  orbitalPeriodMinutes = periodMinutes;
-  const periodMs = periodMinutes * 60 * 1000;
-
-  for (let i = 0; i <= numPoints; i++) {
-    const time = new Date(startTime.getTime() + (periodMs / numPoints) * i);
-    const gmst = satellite.gstime(time);
-    const positionAndVelocity = satellite.propagate(satrec, time);
-    const positionEci = positionAndVelocity.position;
-
-    if (positionEci && typeof positionEci.x === 'number') {
-      const gdPos = satellite.eciToGeodetic(positionEci, gmst);
-      const lat = satellite.radiansToDegrees(gdPos.latitude);
-      const lng = satellite.radiansToDegrees(gdPos.longitude);
-      const alt = gdPos.height / EARTH_RADIUS_KM;
-      const coords = Globe.getCoords(lat, lng, alt);
-      if (coords) points.push(new THREE.Vector3(coords.x, coords.y, coords.z));
-    }
-  }
-  return points;
-}
-
 function drawOrbitPath(points, isSelected = false) {
   const oldLine = Globe.getObjectByName('orbitLine');
   if (oldLine) Globe.remove(oldLine);
@@ -220,82 +140,6 @@ function drawOrbitPath(points, isSelected = false) {
   const line = new THREE.Line(geometry, material);
   line.name = 'orbitLine';
   Globe.add(line);
-}
-
-async function loadSatellite(id) {
-  const loader = document.getElementById('search-loader');
-  loader.style.display = 'block';
-
-  try {
-    const rawData = await getTLEData(id);
-    const lines = rawData.split('\n').map(l => l.trim()).filter(l => l);
-    let name = 'UNKNOWN';
-    let tle1, tle2;
-
-    if (lines.length >= 3) {
-      name = lines[0];
-      tle1 = lines[1];
-      tle2 = lines[2];
-    } else if (lines.length === 2) {
-      tle1 = lines[0];
-      tle2 = lines[1];
-    }
-
-    if (tle1 && tle2) {
-      const satrec = satellite.twoline2satrec(tle1, tle2);
-      satData[0].satrec = satrec;
-      satData[0].name = name;
-      satData[0].orbitPoints = calculateOrbit(satrec, currentTime);
-
-      if (orbitVisible) {
-        drawOrbitPath(satData[0].orbitPoints);
-      }
-    }
-  } catch (err) {
-    console.error('Failed to load satellite:', err);
-    alert('Could not find satellite with ID: ' + id);
-  } finally {
-    loader.style.display = 'none';
-  }
-}
-
-// Initial load
-loadSatellite(SAT_ID);
-
-function updateSatelliteInfo(d) {
-  if (!orbitVisible) {
-    infoBox.style.display = 'none';
-    return;
-  }
-  infoBox.style.display = 'block';
-  infoBox.innerHTML = `
-    <div class="info-header">
-      <div class="status-dot"></div>
-      Telemetry
-    </div>
-    <div class="info-grid">
-      <div class="info-field">
-        <span class="field-label">Object Name</span>
-        <span class="field-value">${d.name}</span>
-      </div>
-      <div class="info-field">
-        <span class="field-label">Position</span>
-        <span class="field-value">${d.lat.toFixed(4)}°, ${d.lng.toFixed(4)}°</span>
-      </div>
-      <div class="info-field">
-        <span class="field-label">Altitude</span>
-        <span class="field-value">${(d.alt * EARTH_RADIUS_KM).toFixed(2)} km</span>
-      </div>
-      <div class="info-field">
-        <span class="field-label">Velocity</span>
-        <span class="field-value">${d.velocity.toFixed(2)} km/s</span>
-      </div>
-      <div class="info-field">
-        <span class="field-label">Period</span>
-        <span class="field-value">${orbitalPeriodMinutes.toFixed(1)} min</span>
-      </div>
-    </div>
-  `;
 }
 
 function updateSelectedSatelliteInfo(satData) {
@@ -398,88 +242,44 @@ function drawDownwardLine(satPos) {
   }
 
   satelliteManager.update(currentTime);
+  satelliteManager.updateSatelliteScale(camera);
   
   // Update selected satellite telemetry and draw downward line
   const selectedIndex = satelliteManager.getSelected();
   if (selectedIndex >= 0) {
     const satData = satelliteManager.getSatelliteData(selectedIndex);
-    updateSelectedSatelliteInfo(satData);
+    if (satData) {
+      updateSelectedSatelliteInfo(satData);
+    }
     
     // Draw downward line
     const satPos = satelliteManager.getSelectedPosition();
-    drawDownwardLine(satPos);
+    if (satPos) {
+        drawDownwardLine(satPos);
+        
+        // Camera Modes Logic
+        if (cameraMode !== 'FREE') {
+            const globalPos = satPos.clone();
+            globalPos.applyMatrix4(Globe.matrixWorld);
+
+            if (cameraMode === 'FOLLOW') {
+                const offset = camera.position.clone().sub(tbControls.target);
+                tbControls.target.copy(globalPos);
+                camera.position.copy(globalPos.clone().add(offset));
+            } else if (cameraMode === 'NADIR') {
+                const nadirPos = globalPos.clone().normalize().multiplyScalar(globalPos.length() + 50);
+                camera.position.lerp(nadirPos, 0.1);
+                tbControls.target.lerp(globalPos, 0.1);
+            }
+        }
+    }
   } else {
     const oldLine = Globe.getObjectByName('downwardLine');
     if (oldLine) Globe.remove(oldLine);
+    infoBox.style.display = 'none';
   }
 
   timeLogger.innerText = `UTC ${currentTime.toISOString().replace('T', ' ').slice(0, 19)} | GLOBAL SURVEILLANCE ACTIVE`;
-
-  if (satData[0].satrec) {
-    const gmst = satellite.gstime(currentTime);
-    const propagate = satellite.propagate(satData[0].satrec, currentTime);
-    const positionEci = propagate.position;
-    const velocityEci = propagate.velocity;
-
-    if (positionEci) {
-      const gdPos = satellite.eciToGeodetic(positionEci, gmst);
-      satData[0].lat = satellite.radiansToDegrees(gdPos.latitude);
-      satData[0].lng = satellite.radiansToDegrees(gdPos.longitude);
-      satData[0].alt = gdPos.height / EARTH_RADIUS_KM;
-
-      if (velocityEci) {
-        satData[0].velocity = Math.sqrt(
-          Math.pow(velocityEci.x, 2) +
-          Math.pow(velocityEci.y, 2) +
-          Math.pow(velocityEci.z, 2)
-        );
-      }
-
-      Globe.objectsData([...satData]);
-
-      // Dynamic scaling
-      if (satelliteMesh) {
-        const cameraDistance = camera.position.length();
-        const worldRadius = THREE.MathUtils.clamp(
-          (cameraDistance / SAT_REFERENCE_CAMERA_DISTANCE) * SAT_WORLD_RADIUS_AT_REFERENCE,
-          SAT_WORLD_RADIUS_MIN,
-          SAT_WORLD_RADIUS_MAX
-        );
-        satelliteMesh.scale.setScalar(worldRadius);
-      }
-
-      // Update info box live
-      updateSatelliteInfo(satData[0]);
-
-      // Camera Modes Logic
-      if (cameraMode !== 'FREE') {
-        const coords = Globe.getCoords(satData[0].lat, satData[0].lng, satData[0].alt);
-        if (coords) {
-          const satPos = new THREE.Vector3(coords.x, coords.y, coords.z);
-          satPos.applyMatrix4(Globe.matrixWorld);
-
-          if (cameraMode === 'FOLLOW') {
-            const offset = camera.position.clone().sub(tbControls.target);
-            tbControls.target.copy(satPos);
-            camera.position.copy(satPos.clone().add(offset));
-          } else if (cameraMode === 'NADIR') {
-            const nadirPos = satPos.clone().normalize().multiplyScalar(satPos.length() + 50);
-            camera.position.lerp(nadirPos, 0.1);
-            tbControls.target.lerp(satPos, 0.1);
-          }
-        }
-      }
-
-      // Update orbit path intermittently
-      if (orbitVisible && satData[0].orbitPoints) {
-        if (Math.random() < 0.01) {
-          const newOrbitPoints = calculateOrbit(satData[0].satrec, currentTime);
-          satData[0].orbitPoints = newOrbitPoints;
-          drawOrbitPath(newOrbitPoints);
-        }
-      }
-    }
-  }
 
   // Add slow Earth rotation for scale perception
   Globe.rotation.y += 0.0002;
@@ -512,7 +312,7 @@ window.addEventListener('mousemove', (event) => {
 });
 
 // Interaction - Click to select satellite
-window.addEventListener('click', (event) => {
+window.addEventListener('click', async (event) => {
   if (event.target.closest('.glass') || event.target.closest('.search-container')) return;
 
   const mouse = new THREE.Vector2(
@@ -523,29 +323,8 @@ window.addEventListener('click', (event) => {
   // Check if clicking on a satellite from the satellite manager
   const clickedIndex = satelliteManager.checkHover(mouse, camera);
   if (clickedIndex >= 0) {
-    satelliteManager.setSelected(clickedIndex);
+    selectSatellite(clickedIndex);
     return;
-  }
-
-  // Original click handler for single satellite
-  if (!satData[0].lat) return;
-  const coords = Globe.getCoords(satData[0].lat, satData[0].lng, satData[0].alt);
-  if (!coords) return;
-
-  const satPos = new THREE.Vector3(coords.x, coords.y, coords.z);
-  satPos.applyMatrix4(Globe.matrixWorld);
-  satPos.project(camera);
-  const dist = Math.sqrt((mouse.x - satPos.x) ** 2 + (mouse.y - satPos.y) ** 2);
-
-  if (dist < 0.15) {
-    orbitVisible = !orbitVisible;
-    if (orbitVisible) {
-      const orbitPoints = calculateOrbit(satData[0].satrec, currentTime);
-      drawOrbitPath(orbitPoints, false);
-    } else {
-      const orbitLine = Globe.getObjectByName('orbitLine');
-      if (orbitLine) Globe.remove(orbitLine);
-    }
   }
 });
 
@@ -615,12 +394,14 @@ document.getElementById('track-single-btn').addEventListener('click', () => {
   document.querySelectorAll('#camera-selector .selector-option').forEach(el => el.classList.remove('active'));
   document.querySelector('#camera-selector [data-mode="FOLLOW"]').classList.add('active');
 
-  if (satData[0].lat) {
-    const coords = Globe.getCoords(satData[0].lat, satData[0].lng, satData[0].alt);
-    if (coords) {
-      const satPos = new THREE.Vector3(coords.x, coords.y, coords.z);
-      tbControls.target.copy(satPos);
-    }
+  const selectedIndex = satelliteManager.getSelected();
+  if (selectedIndex >= 0) {
+      const satPos = satelliteManager.getSelectedPosition();
+      if (satPos) {
+          const globalPos = satPos.clone();
+          globalPos.applyMatrix4(Globe.matrixWorld);
+          tbControls.target.copy(globalPos);
+      }
   }
 });
 
@@ -643,15 +424,17 @@ document.getElementById('view-mode').addEventListener('click', (e) => {
     document.querySelector('#camera-selector [data-mode="FREE"]').classList.add('active');
   } else if (viewMode === 'satellite') {
     // Satellite View - focus on satellite
-    if (satData[0].lat) {
-      const coords = Globe.getCoords(satData[0].lat, satData[0].lng, satData[0].alt);
-      if (coords) {
-        const satPos = new THREE.Vector3(coords.x, coords.y, coords.z);
-        tbControls.target.copy(satPos);
+    const selectedIndex = satelliteManager.getSelected();
+    if (selectedIndex >= 0) {
+      const satPos = satelliteManager.getSelectedPosition();
+      if (satPos) {
+        const globalPos = satPos.clone();
+        globalPos.applyMatrix4(Globe.matrixWorld);
+        tbControls.target.copy(globalPos);
 
         // Position camera close to satellite
         const offset = new THREE.Vector3(20, 20, 20);
-        camera.position.copy(satPos.clone().add(offset));
+        camera.position.copy(globalPos.clone().add(offset));
 
         cameraMode = 'FOLLOW';
         document.querySelectorAll('#camera-selector .selector-option').forEach(el => el.classList.remove('active'));
@@ -662,32 +445,101 @@ document.getElementById('view-mode').addEventListener('click', (e) => {
 });
 
 // Search Listener
-document.getElementById('sat-search').addEventListener('keypress', (e) => {
+const searchInput = document.getElementById('sat-search');
+const searchResults = document.getElementById('search-results');
+
+searchInput.addEventListener('input', (e) => {
+  const query = e.target.value.trim();
+  if (query.length < 2) {
+    searchResults.style.display = 'none';
+    return;
+  }
+
+  const results = satelliteManager.searchSatellites(query);
+  if (results.length > 0) {
+    searchResults.innerHTML = results.map(res => `
+      <div class="search-result-item" data-index="${res.index}">
+        <span class="sat-name">${res.name}</span>
+        <span class="sat-id">#${res.id}</span>
+      </div>
+    `).join('');
+    searchResults.style.display = 'block';
+  } else {
+    searchResults.style.display = 'none';
+  }
+});
+
+// Handle search result selection
+searchResults.addEventListener('click', async (e) => {
+  const item = e.target.closest('.search-result-item');
+  if (!item) return;
+
+  const index = parseInt(item.dataset.index);
+  selectSatellite(index);
+  searchResults.style.display = 'none';
+  searchInput.value = '';
+});
+
+// Helper to select satellite
+async function selectSatellite(index) {
+  if (index >= 0) {
+    satelliteManager.setSelected(index);
+    
+    // Get satellite data
+    const satData = satelliteManager.getSatelliteData(index);
+    if (satData) {
+      // Initial info update (will be updated live in loop)
+      updateSelectedSatelliteInfo(satData);
+      
+      // Calculate and draw orbit arc
+      try {
+        const orbitPoints = await satelliteManager.calculateOrbitPath(satData, Globe, currentTime);
+        drawOrbitPath(orbitPoints, true);
+      } catch (err) {
+        console.error('Failed to calculate orbit:', err);
+      }
+    }
+    
+    // Focus camera on selected satellite
+    setTimeout(() => {
+      const satPos = satelliteManager.getSelectedPosition();
+      if (satPos) {
+        const globalPos = satPos.clone();
+        globalPos.applyMatrix4(Globe.matrixWorld);
+        
+        tbControls.target.copy(globalPos);
+        
+        // Position camera relative to the satellite's position on the globe
+        // Calculate normal vector from center of earth (0,0,0) to satellite
+        const normal = globalPos.clone().normalize();
+        const distance = 80; // Distance above the satellite
+        const newCameraPos = globalPos.clone().add(normal.multiplyScalar(distance));
+        
+        camera.position.copy(newCameraPos);
+        camera.lookAt(globalPos);
+      }
+    }, 100);
+  }
+}
+
+// Keep Enter key for fallback or immediate first result
+searchInput.addEventListener('keypress', async (e) => {
   if (e.key === 'Enter') {
     const query = e.target.value.trim();
     if (query) {
-      // Search in satellite manager
       const index = satelliteManager.searchSatellite(query);
       if (index >= 0) {
-        satelliteManager.setSelected(index);
-        
-        // Focus camera on selected satellite
-        setTimeout(() => {
-          const satPos = satelliteManager.getSelectedPosition();
-          if (satPos) {
-            const globalPos = satPos.clone();
-            globalPos.applyMatrix4(Globe.matrixWorld);
-            
-            tbControls.target.copy(globalPos);
-            const offset = new THREE.Vector3(50, 50, 50);
-            camera.position.copy(globalPos.clone().add(offset));
-          }
-        }, 100);
-      } else {
-        // Fallback to old single satellite search
-        loadSatellite(query);
+        selectSatellite(index);
+        searchResults.style.display = 'none';
       }
     }
+  }
+});
+
+// Close search results when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-container')) {
+    searchResults.style.display = 'none';
   }
 });
 
@@ -696,5 +548,3 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-

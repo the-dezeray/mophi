@@ -60,10 +60,6 @@ function createSatRec(data) {
     // data: [id, name, epoch_unix, incl, raan, ecc, argp, ma, mm, bstar]
     const [id, name, epochUnix, incl, raan, ecc, argp, ma, mm, bstar] = data;
 
-    // Construct TLE strings
-    // We need to format numbers strictly for satellite.js (or rather, the TLE standard)
-    // However, satellite.js is somewhat robust, but column positions matter.
-    
     // Helper to format float
     const f = (n, w, d) => n.toFixed(d).padStart(w, ' ');
     // Helper to format int
@@ -79,24 +75,30 @@ function createSatRec(data) {
     const dayOfYear = diff / oneDay;
     
     // Format Line 1
-    // 1 NNNNNU NNNNNAAA YYYDDD.DDDDDDDD  .NNNNNNNN  NNNNN-N  NNNNN-N 0  XXXXC
-    // We can mock some values like classification, launch year, etc.
-    const line1 = `1 ${i(id, 5)}U 00000A   ${i(year, 2)}${f(dayOfYear, 12, 8)}  .00000000  00000-0  ${formatBstar(bstar)} 0  9991`;
+    const line1Body = `1 ${i(id, 5)}U 00000A   ${i(year, 2)}${f(dayOfYear, 12, 8)}  .00000000  00000-0  ${formatBstar(bstar)} 0  999`;
+    const line1 = line1Body + computeChecksum(line1Body);
 
     // Format Line 2
-    // 2 NNNNN  II.IIII RRR.RRRR EEEEEEE AAAAAAAA MMM.MMMM NN.NNNNNNNNRRRRRC
-    // Eccentricity is decimal point assumed (e.g. 0.00123 -> 0012300)
-    const eccStr = f(ecc, 9, 7).replace('0.', '').substring(0, 7); // Hacky but close
-    
-    const line2 = `2 ${i(id, 5)} ${f(incl, 8, 4)} ${f(raan, 8, 4)} ${eccStr} ${f(argp, 8, 4)} ${f(ma, 8, 4)} ${f(mm, 11, 8)}000018`;
+    const eccStr = f(ecc, 9, 7).replace('0.', '').substring(0, 7);
+    const line2Body = `2 ${i(id, 5)} ${f(incl, 8, 4)} ${f(raan, 8, 4)} ${eccStr} ${f(argp, 8, 4)} ${f(ma, 8, 4)} ${f(mm, 11, 8)}00001`;
+    const line2 = line2Body + computeChecksum(line2Body);
 
     return satellite.twoline2satrec(line1, line2);
 }
 
 function formatBstar(bstar) {
-    // Bstar format: NNNNN-N -> 0.NNNNN * 10^-N
-    // We have the float value. We need to convert back to string?
-    // Or just mock it as 00000-0 if we don't care about drag for short term.
-    // For visualization, drag is negligible over short periods.
     return "00000-0"; 
+}
+
+function computeChecksum(line) {
+    let sum = 0;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char >= '0' && char <= '9') {
+            sum += parseInt(char, 10);
+        } else if (char === '-') {
+            sum += 1;
+        }
+    }
+    return sum % 10;
 }

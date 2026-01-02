@@ -31,7 +31,7 @@ const searchContainer = document.createElement('div');
 searchContainer.className = 'search-container glass';
 searchContainer.innerHTML = `
   <span class="search-icon">🔍</span>
-  <input type="text" id="sat-search" placeholder="Enter NORAD ID (e.g. 25544 for ISS)...">
+  <input type="text" id="sat-search" placeholder="Search by NORAD ID or Name...">
   <div class="loader" id="search-loader"></div>
 `;
 document.body.appendChild(searchContainer);
@@ -205,17 +205,17 @@ function calculateOrbit(satrec, startTime, numPoints = 100) {
   return points;
 }
 
-function drawOrbitPath(points) {
+function drawOrbitPath(points, isSelected = false) {
   const oldLine = Globe.getObjectByName('orbitLine');
   if (oldLine) Globe.remove(oldLine);
   if (points.length < 2) return;
 
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
   const material = new THREE.LineBasicMaterial({
-    color: 0x38bdf8,
+    color: isSelected ? 0x00ff00 : 0x38bdf8,
     linewidth: 2,
     transparent: true,
-    opacity: 0.4
+    opacity: isSelected ? 0.8 : 0.4
   });
   const line = new THREE.Line(geometry, material);
   line.name = 'orbitLine';
@@ -298,6 +298,97 @@ function updateSatelliteInfo(d) {
   `;
 }
 
+function updateSelectedSatelliteInfo(satData) {
+  if (!satData) {
+    infoBox.style.display = 'none';
+    return;
+  }
+  
+  // Index mapping: [id, name, epoch, i, o, e, p, m, n, b]
+  const id = satData[0];
+  const name = satData[1];
+  const epoch = satData[2];
+  const inclination = satData[3];
+  const raan = satData[4];
+  const eccentricity = satData[5];
+  const argOfPerigee = satData[6];
+  const meanAnomaly = satData[7];
+  const meanMotion = satData[8];
+  const bstar = satData[9];
+  
+  infoBox.style.display = 'block';
+  infoBox.innerHTML = `
+    <div class="info-header">
+      <div class="status-dot"></div>
+      Satellite Telemetry
+    </div>
+    <div class="info-grid">
+      <div class="info-field">
+        <span class="field-label">NORAD ID</span>
+        <span class="field-value">${id}</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">Name</span>
+        <span class="field-value">${name}</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">Inclination</span>
+        <span class="field-value">${inclination.toFixed(2)}°</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">RAAN</span>
+        <span class="field-value">${raan.toFixed(2)}°</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">Eccentricity</span>
+        <span class="field-value">${eccentricity.toFixed(6)}</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">Arg Perigee</span>
+        <span class="field-value">${argOfPerigee.toFixed(2)}°</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">Mean Anomaly</span>
+        <span class="field-value">${meanAnomaly.toFixed(2)}°</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">Mean Motion</span>
+        <span class="field-value">${meanMotion.toFixed(6)}</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">BSTAR</span>
+        <span class="field-value">${bstar.toExponential(4)}</span>
+      </div>
+      <div class="info-field">
+        <span class="field-label">Epoch</span>
+        <span class="field-value">${new Date(epoch * 1000).toISOString().slice(0, 10)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function drawDownwardLine(satPos) {
+  const oldLine = Globe.getObjectByName('downwardLine');
+  if (oldLine) Globe.remove(oldLine);
+  
+  if (!satPos) return;
+  
+  // Calculate the point on Earth's surface directly below the satellite
+  const earthSurfacePoint = satPos.clone().normalize().multiplyScalar(100);
+  
+  const points = [satPos.clone(), earthSurfacePoint];
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({
+    color: 0x00ff00,
+    linewidth: 2,
+    transparent: true,
+    opacity: 0.6
+  });
+  const line = new THREE.Line(geometry, material);
+  line.name = 'downwardLine';
+  Globe.add(line);
+}
+
 // Animation Loop
 (function animate() {
   requestAnimationFrame(animate);
@@ -307,6 +398,20 @@ function updateSatelliteInfo(d) {
   }
 
   satelliteManager.update(currentTime);
+  
+  // Update selected satellite telemetry and draw downward line
+  const selectedIndex = satelliteManager.getSelected();
+  if (selectedIndex >= 0) {
+    const satData = satelliteManager.getSatelliteData(selectedIndex);
+    updateSelectedSatelliteInfo(satData);
+    
+    // Draw downward line
+    const satPos = satelliteManager.getSelectedPosition();
+    drawDownwardLine(satPos);
+  } else {
+    const oldLine = Globe.getObjectByName('downwardLine');
+    if (oldLine) Globe.remove(oldLine);
+  }
 
   timeLogger.innerText = `UTC ${currentTime.toISOString().replace('T', ' ').slice(0, 19)} | GLOBAL SURVEILLANCE ACTIVE`;
 
@@ -383,7 +488,30 @@ function updateSatelliteInfo(d) {
   renderer.render(scene, camera);
 })();
 
-// Interaction
+// Mouse move for hover detection
+window.addEventListener('mousemove', (event) => {
+  if (event.target.closest('.glass') || event.target.closest('.search-container')) {
+    satelliteManager.setHovered(-1);
+    document.body.classList.remove('hovering-satellite');
+    return;
+  }
+
+  const mouse = new THREE.Vector2(
+    (event.clientX / window.innerWidth) * 2 - 1,
+    -(event.clientY / window.innerHeight) * 2 + 1
+  );
+
+  const hoveredIndex = satelliteManager.checkHover(mouse, camera);
+  satelliteManager.setHovered(hoveredIndex);
+  
+  if (hoveredIndex >= 0) {
+    document.body.classList.add('hovering-satellite');
+  } else {
+    document.body.classList.remove('hovering-satellite');
+  }
+});
+
+// Interaction - Click to select satellite
 window.addEventListener('click', (event) => {
   if (event.target.closest('.glass') || event.target.closest('.search-container')) return;
 
@@ -392,6 +520,14 @@ window.addEventListener('click', (event) => {
     -(event.clientY / window.innerHeight) * 2 + 1
   );
 
+  // Check if clicking on a satellite from the satellite manager
+  const clickedIndex = satelliteManager.checkHover(mouse, camera);
+  if (clickedIndex >= 0) {
+    satelliteManager.setSelected(clickedIndex);
+    return;
+  }
+
+  // Original click handler for single satellite
   if (!satData[0].lat) return;
   const coords = Globe.getCoords(satData[0].lat, satData[0].lng, satData[0].alt);
   if (!coords) return;
@@ -405,7 +541,7 @@ window.addEventListener('click', (event) => {
     orbitVisible = !orbitVisible;
     if (orbitVisible) {
       const orbitPoints = calculateOrbit(satData[0].satrec, currentTime);
-      drawOrbitPath(orbitPoints);
+      drawOrbitPath(orbitPoints, false);
     } else {
       const orbitLine = Globe.getObjectByName('orbitLine');
       if (orbitLine) Globe.remove(orbitLine);
@@ -528,8 +664,30 @@ document.getElementById('view-mode').addEventListener('click', (e) => {
 // Search Listener
 document.getElementById('sat-search').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
-    const id = e.target.value.trim();
-    if (id) loadSatellite(id);
+    const query = e.target.value.trim();
+    if (query) {
+      // Search in satellite manager
+      const index = satelliteManager.searchSatellite(query);
+      if (index >= 0) {
+        satelliteManager.setSelected(index);
+        
+        // Focus camera on selected satellite
+        setTimeout(() => {
+          const satPos = satelliteManager.getSelectedPosition();
+          if (satPos) {
+            const globalPos = satPos.clone();
+            globalPos.applyMatrix4(Globe.matrixWorld);
+            
+            tbControls.target.copy(globalPos);
+            const offset = new THREE.Vector3(50, 50, 50);
+            camera.position.copy(globalPos.clone().add(offset));
+          }
+        }, 100);
+      } else {
+        // Fallback to old single satellite search
+        loadSatellite(query);
+      }
+    }
   }
 });
 

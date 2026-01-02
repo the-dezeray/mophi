@@ -1,0 +1,14 @@
+Index Mapping for your Vite App:
+Since the keys are gone, you will need to access the data by index in your Javascript code:
+
+Index	Value	Description
+0	id	NORAD Catalog ID
+1	name	Satellite Name
+2	epoch	Epoch (Unix Timestamp)
+3	i	Inclination
+4	o	RA of Ascending Node (RAAN)
+5	e	Eccentricity
+6	p	Argument of Pericenter
+7	m	Mean Anomaly
+8	n	Mean Motion
+9	b	BSTAR Drag Term

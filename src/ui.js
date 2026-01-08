@@ -120,17 +120,87 @@ export function createUI(handlers, demoEnabled = true) {
   `;
   document.body.appendChild(trackingCard);
 
-  // About Button - Top Left
-  const aboutButton = document.createElement('button');
-  aboutButton.id = 'about-text';
-  aboutButton.type = 'button';
-  aboutButton.textContent = 'about me';
-  aboutButton.title = 'Open About';
-  aboutButton.setAttribute('aria-label', 'Open about me');
-  aboutButton.addEventListener('click', () => {
-    window.open('https://www.dezeray.me', '_blank', 'noopener,noreferrer');
+  // Top Left Controls Container
+  const topLeftControls = document.createElement('div');
+  topLeftControls.id = 'top-left-controls';
+  document.body.appendChild(topLeftControls);
+
+  // GitHub Button
+  const githubButton = document.createElement('button');
+  githubButton.id = 'github-link';
+  githubButton.className = 'glass-icon-btn';
+  githubButton.innerHTML = `
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+      <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+    </svg>
+  `;
+  githubButton.title = 'View Source on GitHub';
+  githubButton.addEventListener('click', () => {
+    window.open('https://github.com/the-dezeray/sat2', '_blank', 'noopener,noreferrer');
   });
-  document.body.appendChild(aboutButton);
+  topLeftControls.appendChild(githubButton);
+
+  // Contact Button
+  const contactButton = document.createElement('button');
+  contactButton.id = 'contact-btn';
+  contactButton.innerHTML = `
+    <span class="contact-icon">></span>
+    <span class="contact-text">get in touch</span>
+  `;
+  contactButton.title = 'Contact me';
+  topLeftControls.appendChild(contactButton);
+
+  // Contact Card
+  const contactCard = document.createElement('div');
+  contactCard.id = 'contact-card';
+  contactCard.className = 'glass contact-card-hidden';
+  contactCard.innerHTML = `
+    <div class="contact-card-header">
+      <h3>Let's Connect</h3>
+      <button class="close-contact-card">&times;</button>
+    </div>
+    <div class="contact-links">
+      <a href="mailto:chingwaru.desiree@gmail.com" class="contact-link-item">
+        <span class="link-icon">📧</span>
+        <div class="link-info">
+          <span class="link-label">Gmail</span>
+          <span class="link-value">chingwaru.desiree@gmail.com</span>
+        </div>
+      </a>
+      <a href="https://www.linkedin.com/in/desiree-chingwaru-294747248/" target="_blank" class="contact-link-item">
+        <span class="link-icon">🔗</span>
+        <div class="link-info">
+          <span class="link-label">LinkedIn</span>
+          <span class="link-value">Desiree Chingwaru</span>
+        </div>
+      </a>
+      <a href="https://www.dezeray.me/" target="_blank" class="contact-link-item">
+        <span class="link-icon">🌐</span>
+        <div class="link-info">
+          <span class="link-label">Portfolio</span>
+          <span class="link-value">dezeray.me</span>
+        </div>
+      </a>
+    </div>
+  `;
+  document.body.appendChild(contactCard);
+
+  // Contact Button Interaction
+  contactButton.addEventListener('click', () => {
+    contactCard.classList.toggle('contact-card-hidden');
+    contactCard.classList.toggle('contact-card-visible');
+  });
+
+  contactCard.querySelector('.close-contact-card').addEventListener('click', () => {
+    contactCard.classList.add('contact-card-hidden');
+    contactCard.classList.remove('contact-card-visible');
+  });
+
+  // Version Info
+  const versionBadge = document.createElement('div');
+  versionBadge.id = 'version-badge';
+  versionBadge.innerHTML = `MOPHI <span class="version-num">v0.0.0</span>`;
+  document.body.appendChild(versionBadge);
 
   return {
     timeLogger,
@@ -142,7 +212,9 @@ export function createUI(handlers, demoEnabled = true) {
     viewModeSelector,
     orbitLegend,
     controlsPanel,
-    trackingCard
+    trackingCard,
+    contactCard,
+    versionBadge
   };
 }
 

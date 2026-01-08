@@ -1,4 +1,4 @@
-export function createUI(handlers) {
+export function createUI(handlers, demoEnabled = true) {
   // Time Logger
   const timeLogger = document.createElement('div');
   timeLogger.id = 'time-log';
@@ -52,7 +52,7 @@ export function createUI(handlers) {
     </button>
     <button id="reset-btn" title="Reset Time">↻</button>
     <button id="auto-survey-btn" title="Auto Survey Mode">🎥</button>
-    <button id="demo-btn" title="Run Demo Sequence">🎬</button>
+    <button id="demo-btn" title="Run Demo Sequence" style="${demoEnabled ? '' : 'display: none;'}">🎬</button>
     <button id="more-options-btn" title="More Options">⚙️</button>
   `;
   document.body.appendChild(actionButtons);

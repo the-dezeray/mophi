@@ -59,7 +59,7 @@ export class SatelliteManager {
                 const mm = item[8]; // Mean Motion
 
                 if (mm >= 11.25) {
-                    color.setHex(0xffffff); // LEO - Green
+                    color.setHex(0xb0b3b8); // LEO - 
                 } else if (mm > 1.0027) {
                     color.setHex(0xffff00); // MEO - Yellow
                 } else {

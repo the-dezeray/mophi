@@ -3,7 +3,7 @@ import { state, updateState } from './state.js';
 
 /**
  * Demo Sequence Manager
- * Handles the intro animation: Rotating, Zooming In, Zooming Out, and Selecting Stars.
+ * Handles the intro animation: Rotating, Zooming In, Zooming Out, and Focused Observation.
  */
 export function initDemo(camera, controls, satelliteManager, selectSatelliteFn) {
     let phase = 0;
@@ -33,16 +33,24 @@ export function initDemo(camera, controls, satelliteManager, selectSatelliteFn) 
             camera.lookAt(0, 0, 0);
             controls.target.set(0, 0, 0);
         }
-        // Phase 2: Orbital Jump (8s - 14s) - Focus on a satellite
+        // Phase 2: Orbital Jump (8s - 14s) - Focus on 'BOTSAT-1'
         else if (elapsed < 14) {
             if (phase !== 2) {
                 console.log('Demo Phase 2: Orbital Jump');
                 phase = 2;
 
-                const count = satelliteManager.count;
-                if (count > 0) {
-                    const randomIndex = Math.floor(Math.random() * count);
-                    selectSatelliteFn(randomIndex);
+                // Targeted selection: BOTSAT-1
+                const botsatIndex = satelliteManager.searchSatellite('BOTSAT-1');
+                if (botsatIndex >= 0) {
+                    console.log('Demo: Found and selecting BOTSAT-1');
+                    selectSatelliteFn(botsatIndex);
+                } else {
+                    // Fallback if not found
+                    const count = satelliteManager.count;
+                    if (count > 0) {
+                        const randomIndex = Math.floor(Math.random() * count);
+                        selectSatelliteFn(randomIndex);
+                    }
                 }
             }
         }
@@ -116,35 +124,11 @@ export function initDemo(camera, controls, satelliteManager, selectSatelliteFn) 
                 });
             }
         }
-        // Phase 6: Space Observation (34s - 40s) - Look at stars
+        // Phase 6: Final Descent (34s - 40s) - Return to Earth view
         else if (elapsed < 40) {
             if (phase !== 6) {
-                console.log('Demo Phase 6: Space Observation');
+                console.log('Demo Phase 6: Final Descent');
                 phase = 6;
-
-                const startPos = camera.position.clone();
-                const endPos = new THREE.Vector3(500, 1200, 500);
-                const startTarget = controls.target.clone();
-                const endTarget = new THREE.Vector3(1000, 2000, 1000);
-
-                updateState({
-                    cameraAnimation: {
-                        active: true,
-                        startPos,
-                        endPos,
-                        startTarget,
-                        endTarget,
-                        progress: 0,
-                        duration: 6
-                    }
-                });
-            }
-        }
-        // Phase 7: Final Descent (40s - 46s) - Return to Earth view
-        else if (elapsed < 46) {
-            if (phase !== 7) {
-                console.log('Demo Phase 7: Final Descent');
-                phase = 7;
 
                 const startPos = camera.position.clone();
                 const endPos = new THREE.Vector3(0, 0, 800);

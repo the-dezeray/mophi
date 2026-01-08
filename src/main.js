@@ -8,11 +8,11 @@ import { initDemo } from './demo.js';
 import './style.css';
 
 // --- DEMO SETTINGS ---
-const ENABLE_STARTUP_DEMO = true; // CHANGE TO 'false' TO DISABLE THE DEMO SEQUENCE
+const ENABLE_STARTUP_DEMO = false; // CHANGE TO 'false' TO DISABLE THE DEMO SEQUENCE
 // --------------------
 
 // UI Elements
-const UI = createUI();
+const UI = createUI(null, ENABLE_STARTUP_DEMO);
 const {
   timeLogger,
   searchContainer,

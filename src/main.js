@@ -4,7 +4,12 @@ import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls
 import { SatelliteManager } from './SatelliteManager.js';
 import { state, updateState } from './state.js';
 import { createUI, updateInfoBox } from './ui.js';
+import { initDemo } from './demo.js';
 import './style.css';
+
+// --- DEMO SETTINGS ---
+const ENABLE_STARTUP_DEMO = true; // CHANGE TO 'false' TO DISABLE THE DEMO SEQUENCE
+// --------------------
 
 // UI Elements
 const UI = createUI();
@@ -16,8 +21,8 @@ const {
   zoomControls,
   actionButtons,
   viewModeSelector,
-  orbitLegend,
-  controlsPanel
+  controlsPanel,
+  trackingCard
 } = UI;
 
 const Globe = new ThreeGlobe()
@@ -33,7 +38,7 @@ function handleUrlParams() {
   const params = new URLSearchParams(window.location.search);
   // Support ?select=name or ?s=name or ?name (if it's the only param)
   let query = params.get('select') || params.get('s');
-  
+
   if (!query) {
     // Check if there's a param with no value, e.g. ?botsat-1
     for (const [key, value] of params.entries()) {
@@ -65,6 +70,12 @@ satelliteManager.onReadyCallback = () => {
     setTimeout(() => overlay.remove(), 500);
   }
   handleUrlParams();
+
+  // Trigger demo if enabled
+  if (ENABLE_STARTUP_DEMO) {
+    updateState({ demoMode: true });
+    initDemo(camera, tbControls, satelliteManager, selectSatellite);
+  }
 };
 
 // Handle browser back/forward buttons
@@ -75,7 +86,8 @@ window.addEventListener('popstate', () => {
 // Scene Setup
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
+// Clamp pixel ratio to reduce GPU cost on high-DPI screens
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.querySelector('#app').innerHTML = '<div id="globeViz"></div>';
 const vizContainer = document.getElementById('globeViz');
 vizContainer.appendChild(renderer.domElement);
@@ -95,7 +107,20 @@ const tbControls = new TrackballControls(camera, renderer.domElement);
 tbControls.rotateSpeed = 5;
 tbControls.zoomSpeed = 0.8;
 
+// Performance optimization variables
+let lastHoverCheck = 0;
+const HOVER_THROTTLE_MS = 16; // ~60Hz max
+let hoverCheckScheduled = false;
+let lastOrbitUpdate = 0;
+const ORBIT_UPDATE_INTERVAL = 100; // 10Hz for orbit/downward lines
+const reusedMouse = new THREE.Vector2(); // Reuse mouse vector
+
 function drawOrbitPath(points, isSelected = false) {
+  // Throttle orbit path updates to 10Hz
+  const now = performance.now();
+  if (now - lastOrbitUpdate < ORBIT_UPDATE_INTERVAL) return;
+  lastOrbitUpdate = now;
+
   const oldLine = Globe.getObjectByName('orbitLine');
   if (oldLine) Globe.remove(oldLine);
   if (points.length < 2) return;
@@ -115,6 +140,10 @@ function drawOrbitPath(points, isSelected = false) {
 }
 
 function drawDownwardLine(satPos) {
+  // Throttle downward line updates to 10Hz
+  const now = performance.now();
+  if (now - lastOrbitUpdate < ORBIT_UPDATE_INTERVAL) return;
+
   const oldLine = Globe.getObjectByName('downwardLine');
   if (oldLine) Globe.remove(oldLine);
 
@@ -150,24 +179,24 @@ function drawDownwardLine(satPos) {
   // Handle camera animation
   if (state.cameraAnimation.active) {
     state.cameraAnimation.progress += 1 / (60 * state.cameraAnimation.duration);
-    
+
     if (state.cameraAnimation.progress >= 1) {
       // Animation complete
       state.cameraAnimation.active = false;
       state.cameraAnimation.progress = 1;
     }
-    
+
     // Easing function (easeInOutCubic)
     const t = state.cameraAnimation.progress;
     const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    
+
     // Interpolate camera position and target
     camera.position.lerpVectors(
       state.cameraAnimation.startPos,
       state.cameraAnimation.endPos,
       eased
     );
-    
+
     tbControls.target.lerpVectors(
       state.cameraAnimation.startTarget,
       state.cameraAnimation.endTarget,
@@ -180,7 +209,7 @@ function drawDownwardLine(satPos) {
   if (orbitLine && orbitLine.material) {
     const targetOpacity = orbitLine.userData.targetOpacity || 0.4;
     orbitLine.userData.currentOpacity = orbitLine.userData.currentOpacity || 0;
-    
+
     if (orbitLine.userData.currentOpacity < targetOpacity) {
       orbitLine.userData.currentOpacity = Math.min(
         orbitLine.userData.currentOpacity + 0.02,
@@ -230,7 +259,7 @@ function drawDownwardLine(satPos) {
     const oldLine = Globe.getObjectByName('downwardLine');
     if (oldLine) Globe.remove(oldLine);
     infoBox.style.display = 'none';
-    
+
     // Still update time logger even if no satellite is selected
     const now = performance.now();
     if (now - state.lastInfoUpdate > 100) {
@@ -247,8 +276,8 @@ function drawDownwardLine(satPos) {
   renderer.render(scene, camera);
 })();
 
-// Mouse move for hover detection
-window.addEventListener('mousemove', (event) => {
+// Throttled hover check function
+function performHoverCheck(event) {
   if (event.target.closest('.glass') || event.target.closest('.search-container')) {
     satelliteManager.setHovered(-1);
     document.body.classList.remove('hovering-satellite');
@@ -256,12 +285,13 @@ window.addEventListener('mousemove', (event) => {
     return;
   }
 
-  const mouse = new THREE.Vector2(
+  // Reuse mouse vector to avoid allocations
+  reusedMouse.set(
     (event.clientX / window.innerWidth) * 2 - 1,
     -(event.clientY / window.innerHeight) * 2 + 1
   );
 
-  const hoveredIndex = satelliteManager.checkHover(mouse, camera);
+  const hoveredIndex = satelliteManager.checkHover(reusedMouse, camera);
   satelliteManager.setHovered(hoveredIndex);
 
   if (hoveredIndex >= 0) {
@@ -290,6 +320,16 @@ window.addEventListener('mousemove', (event) => {
     document.body.classList.remove('hovering-satellite');
     hoverLabel.style.display = 'none';
   }
+  hoverCheckScheduled = false;
+}
+
+// Mouse move for hover detection (throttled)
+window.addEventListener('mousemove', (event) => {
+  // Throttle hover checks to ~60Hz max using requestAnimationFrame
+  if (!hoverCheckScheduled) {
+    hoverCheckScheduled = true;
+    requestAnimationFrame(() => performHoverCheck(event));
+  }
 });
 
 window.addEventListener('mouseleave', () => {
@@ -302,13 +342,14 @@ window.addEventListener('mouseleave', () => {
 window.addEventListener('click', async (event) => {
   if (event.target.closest('.glass') || event.target.closest('.search-container')) return;
 
-  const mouse = new THREE.Vector2(
+  // Reuse mouse vector to avoid allocations
+  reusedMouse.set(
     (event.clientX / window.innerWidth) * 2 - 1,
     -(event.clientY / window.innerHeight) * 2 + 1
   );
 
   // Check if clicking on a satellite from the satellite manager
-  const clickedIndex = satelliteManager.checkHover(mouse, camera);
+  const clickedIndex = satelliteManager.checkHover(reusedMouse, camera);
   if (clickedIndex >= 0) {
     selectSatellite(clickedIndex);
     return;
@@ -345,6 +386,50 @@ document.getElementById('camera-selector').addEventListener('click', (e) => {
   if (cameraMode === 'FREE') {
     tbControls.target.set(0, 0, 0);
   }
+});
+
+// Auto Survey Logic
+let autoSurveyTimer = null;
+function runAutoSurvey() {
+  if (!state.autoSurvey) return;
+
+  const count = satelliteManager.count;
+  if (count > 0) {
+    const randomIndex = Math.floor(Math.random() * count);
+    selectSatellite(randomIndex);
+  }
+
+  // Next jump in 10-15 seconds
+  const nextDelay = 10000 + Math.random() * 5000;
+  autoSurveyTimer = setTimeout(runAutoSurvey, nextDelay);
+}
+
+document.getElementById('auto-survey-btn').addEventListener('click', (e) => {
+  const active = !state.autoSurvey;
+  updateState({ autoSurvey: active });
+
+  const btn = e.currentTarget;
+  btn.classList.toggle('status-on', active);
+  trackingCard.style.display = active ? 'flex' : 'none';
+
+  if (active) {
+    runAutoSurvey();
+  } else {
+    if (autoSurveyTimer) clearTimeout(autoSurveyTimer);
+  }
+});
+
+document.getElementById('demo-btn').addEventListener('click', () => {
+  if (state.demoMode) return;
+  updateState({ demoMode: true });
+  initDemo(camera, tbControls, satelliteManager, selectSatellite);
+});
+
+document.getElementById('more-options-btn').addEventListener('click', (e) => {
+  const panel = document.getElementById('controls');
+  const isCollapsed = panel.classList.contains('collapsed');
+  panel.classList.toggle('collapsed', !isCollapsed);
+  e.currentTarget.classList.toggle('status-on', isCollapsed);
 });
 
 // Zoom Controls Listeners
@@ -480,7 +565,7 @@ async function selectSatellite(index) {
       updateState({ orbitVisible: false });
       const orbitLine = Globe.getObjectByName('orbitLine');
       if (orbitLine) Globe.remove(orbitLine);
-      
+
       // Clear URL parameter
       window.history.replaceState({}, '', window.location.pathname);
       return;
@@ -520,7 +605,7 @@ async function selectSatellite(index) {
         // Calculate target camera position at an angle (not directly above)
         const normal = globalPos.clone().normalize();
         const distance = 80;
-        
+
         // Create offset: move outward along normal, then add tangential offset for angled view
         const tangent = new THREE.Vector3(-normal.y, normal.x, 0).normalize();
         const newCameraPos = globalPos.clone()

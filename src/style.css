@@ -58,6 +58,61 @@ body.hovering-satellite {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
+/* Tracking Card */
+#tracking-card {
+  position: absolute;
+  top: 16px;
+  left: 110px;
+  /* Offset from about-text */
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-left: 2px solid #ef4444;
+}
+
+.tracking-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #ef4444;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+  animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.tracking-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ef4444;
+  letter-spacing: 0.1em;
+}
+
 /* About Text - Top Left */
 #about-text {
   position: absolute;
@@ -69,12 +124,22 @@ body.hovering-satellite {
   z-index: 1000;
   cursor: pointer;
   user-select: none;
-  text-decoration: none;
   transition: var(--transition);
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  line-height: 1;
 }
 
 #about-text:hover {
   color: var(--accent-primary);
+}
+
+#about-text:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.6);
+  outline-offset: 2px;
 }
 
 /* Compact Search Bar */
@@ -229,6 +294,14 @@ body.hovering-satellite {
   border-radius: var(--radius-md);
   z-index: 1000;
   max-width: 500px;
+  transition: var(--transition);
+  transform-origin: bottom right;
+}
+
+#controls.collapsed {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+  pointer-events: none;
 }
 
 .control-item {
@@ -257,7 +330,7 @@ body.hovering-satellite {
   overflow-y: auto;
   padding: 12px;
   border-radius: var(--radius-lg);
-  z-index: 100;
+  z-index: 1100;
   display: none;
   animation: slideIn 0.3s ease-out;
 }
@@ -274,6 +347,10 @@ body.hovering-satellite {
   }
 }
 
+#sat-info.collapsed .info-grid {
+  display: none;
+}
+
 .info-header {
   font-size: 10px;
   font-weight: 700;
@@ -286,11 +363,41 @@ body.hovering-satellite {
   gap: 6px;
 }
 
-.info-header::after {
-  content: '';
+.info-header-spacer {
   flex: 1;
-  height: 1px;
-  background: linear-gradient(to right, var(--accent-primary), transparent);
+}
+
+.info-minimize-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  line-height: 1;
+}
+
+.info-minimize-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  transform: scale(1.05);
+}
+
+.info-minimize-btn:active {
+  transform: scale(0.95);
+}
+
+.info-minimize-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .info-grid {
@@ -460,9 +567,11 @@ button.primary,
   background: var(--text-main);
 }
 
-button.active {
+button.active,
+button.status-on {
   color: var(--accent-primary);
   background: rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 10px var(--accent-glow);
 }
 
 .selector-group {
@@ -564,4 +673,75 @@ button.active {
 
 .stuff-i-have li {
   margin-bottom: 5px;
+}
+
+/* Mobile layout */
+@media (max-width: 640px) {
+  #about-text {
+    top: 12px;
+    left: 12px;
+  }
+
+  .search-container {
+    top: 56px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    transform: none;
+  }
+
+  #action-buttons {
+    top: 12px;
+    right: 12px;
+  }
+
+  #sat-info {
+    top: 108px;
+    left: 12px;
+    width: auto;
+    right: 12px;
+    max-height: 45vh;
+  }
+
+  #controls {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: none;
+    justify-content: center;
+  }
+
+  #view-mode {
+    top: auto;
+    right: auto;
+    left: 12px;
+    bottom: 72px;
+  }
+
+  #zoom-controls {
+    top: auto;
+    right: 12px;
+    bottom: 124px;
+    width: auto;
+    transform: none;
+    padding: 6px 8px;
+  }
+
+  #zoom-controls .control-item {
+    min-height: auto;
+  }
+
+  #zoom-controls input[type="range"] {
+    transform: none;
+    margin: 0;
+    width: 140px;
+  }
+
+  #time-log {
+    display: none;
+  }
+
+  #orbit-legend {
+    display: none;
+  }
 }

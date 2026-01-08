@@ -8,6 +8,8 @@ export const state = {
   lastInfoUpdate: 0,
   viewMode: 'earth', // earth, satellite
   meshMode: 'marble', // marble, night, dark, gray
+  autoSurvey: false,
+  demoMode: false,
   // Camera animation state
   cameraAnimation: {
     active: false,

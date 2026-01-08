@@ -51,6 +51,9 @@ export function createUI(handlers) {
       <span id="pause-icon">⏸</span>
     </button>
     <button id="reset-btn" title="Reset Time">↻</button>
+    <button id="auto-survey-btn" title="Auto Survey Mode">🎥</button>
+    <button id="demo-btn" title="Run Demo Sequence">🎬</button>
+    <button id="more-options-btn" title="More Options">⚙️</button>
   `;
   document.body.appendChild(actionButtons);
 
@@ -66,26 +69,16 @@ export function createUI(handlers) {
   `;
   document.body.appendChild(viewModeSelector);
 
-  // Orbit Legend
-  const orbitLegend = document.createElement('div');
-  orbitLegend.id = 'orbit-legend';
-  orbitLegend.className = 'glass';
-  orbitLegend.innerHTML = `
-    <div class="legend-item"><span class="dot leo"></span> LEO (Low)</div>
-    <div class="legend-item"><span class="dot meo"></span> MEO (Mid)</div>
-    <div class="legend-item"><span class="dot heo"></span> HEO (High)</div>
-    <div class="legend-item"><span class="dot starlink"></span> Start link</div>
-  `;
-  document.body.appendChild(orbitLegend);
+  // Orbit Legend (removed for a cleaner, more mobile-friendly UI)
 
   // Main Controls Panel
   const controlsPanel = document.createElement('div');
   controlsPanel.id = 'controls';
-  controlsPanel.className = 'glass';
+  controlsPanel.className = 'glass collapsed';
   controlsPanel.innerHTML = `
     <div class="control-item">
       <span class="control-label-text">Scale</span>
-      <input type="range" id="speed-slider" min="1" max="500" value="1" step="1">
+      <input type="range" id="speed-slider" min="1" max="200" value="1" step="1">
       <span class="value-badge" id="speed-value">1</span>
     </div>
 
@@ -104,14 +97,30 @@ export function createUI(handlers) {
   `;
   document.body.appendChild(controlsPanel);
 
-  // About Link - Top Left
-  const aboutText = document.createElement('a');
-  aboutText.id = 'about-text';
-  aboutText.href = 'https://www.dezeray.me';
-  aboutText.target = '_blank';
-  aboutText.rel = 'noopener noreferrer';
-  aboutText.textContent = 'about me';
-  document.body.appendChild(aboutText);
+  // Tracking Card
+  const trackingCard = document.createElement('div');
+  trackingCard.id = 'tracking-card';
+  trackingCard.className = 'glass';
+  trackingCard.style.display = 'none';
+  trackingCard.innerHTML = `
+    <div class="tracking-content">
+      <div class="pulse-dot"></div>
+      <span class="tracking-text">TRACKING</span>
+    </div>
+  `;
+  document.body.appendChild(trackingCard);
+
+  // About Button - Top Left
+  const aboutButton = document.createElement('button');
+  aboutButton.id = 'about-text';
+  aboutButton.type = 'button';
+  aboutButton.textContent = 'about me';
+  aboutButton.title = 'Open About';
+  aboutButton.setAttribute('aria-label', 'Open about me');
+  aboutButton.addEventListener('click', () => {
+    window.open('https://www.dezeray.me', '_blank', 'noopener,noreferrer');
+  });
+  document.body.appendChild(aboutButton);
 
   return {
     timeLogger,
@@ -121,8 +130,8 @@ export function createUI(handlers) {
     zoomControls,
     actionButtons,
     viewModeSelector,
-    orbitLegend,
-    controlsPanel
+    controlsPanel,
+    trackingCard
   };
 }
 
@@ -132,6 +141,8 @@ export function updateInfoBox(infoBox, satData, liveData) {
     infoBox.dataset.currentSatId = '';
     return;
   }
+
+  const isCollapsed = infoBox.classList.contains('collapsed');
 
   const id = satData[0];
   const name = satData[1];
@@ -145,14 +156,23 @@ export function updateInfoBox(infoBox, satData, liveData) {
   const bstar = satData[9];
 
   infoBox.style.display = 'block';
-  
+
   // If it's a different satellite, rebuild the whole structure
   if (infoBox.dataset.currentSatId !== id.toString()) {
     infoBox.dataset.currentSatId = id.toString();
+    infoBox.classList.toggle('collapsed', isCollapsed);
     infoBox.innerHTML = `
       <div class="info-header">
         <div class="status-dot"></div>
-        Satellite Telemetry
+        <span class="info-title">Satellite Telemetry</span>
+        <div class="info-header-spacer"></div>
+        <button
+          type="button"
+          class="info-minimize-btn"
+          data-role="telemetry-minimize"
+          aria-label="${isCollapsed ? 'Expand telemetry' : 'Minimize telemetry'}"
+          title="${isCollapsed ? 'Expand' : 'Minimize'}"
+        >${isCollapsed ? '▸' : '▾'}</button>
       </div>
       <div class="info-grid">
         <div class="info-field full-width">
@@ -217,6 +237,17 @@ export function updateInfoBox(infoBox, satData, liveData) {
         </div>
       </div>
     `;
+
+    const minimizeBtn = infoBox.querySelector('[data-role="telemetry-minimize"]');
+    if (minimizeBtn) {
+      minimizeBtn.addEventListener('click', () => {
+        const nextCollapsed = !infoBox.classList.contains('collapsed');
+        infoBox.classList.toggle('collapsed', nextCollapsed);
+        minimizeBtn.textContent = nextCollapsed ? '▸' : '▾';
+        minimizeBtn.setAttribute('aria-label', nextCollapsed ? 'Expand telemetry' : 'Minimize telemetry');
+        minimizeBtn.title = nextCollapsed ? 'Expand' : 'Minimize';
+      });
+    }
   }
 
   // Update live values

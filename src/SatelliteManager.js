@@ -10,7 +10,7 @@ export class SatelliteManager {
         this.dummy = new THREE.Object3D();
         this.isReady = false;
         this.lastUpdateTime = 0;
-        this.updateInterval = 1000;
+        this.updateInterval = 50; // 20Hz for smooth motion
         this.pendingUpdate = false;
         this.satelliteData = [];
         this.hoveredIndex = -1;
@@ -101,9 +101,14 @@ export class SatelliteManager {
     update(date) {
         if (!this.isReady || this.pendingUpdate) return;
 
+        // Throttle updates to respect updateInterval (default 50ms = 20Hz for smooth motion)
+        const now = Date.now();
+        if (now - this.lastUpdateTime < this.updateInterval) return;
+
         // Send update request to worker
         this.worker.postMessage({ type: 'update', date: date.getTime() });
         this.pendingUpdate = true;
+        this.lastUpdateTime = now;
     }
 
     updateMesh(positions) {
@@ -144,9 +149,6 @@ export class SatelliteManager {
         this.mesh.instanceMatrix.needsUpdate = true;
         if (validCount === 0) console.warn('No valid satellites updated!');
         else if (Math.random() < 0.01) console.log(`Updated ${validCount} satellites`);
-
-        // Update colors based on hover/selection
-        this.updateColors();
     }
 
     updateSatelliteScale(camera) {

@@ -54,17 +54,7 @@ export class SatelliteManager {
             // Set colors based on orbit
             const color = new THREE.Color();
             for (let i = 0; i < this.count; i++) {
-                const item = this.satelliteData[i];
-                // item format: [id, name, epoch_unix, incl, raan, ecc, argp, ma, mm, bstar]
-                const mm = item[8]; // Mean Motion
-
-                if (mm >= 11.25) {
-                    color.setHex(0xb0b3b8); // LEO - 
-                } else if (mm > 1.0027) {
-                    color.setHex(0xffff00); // MEO - Yellow
-                } else {
-                    color.setHex(0xff0000); // HEO - Red
-                }
+                const color = this._resolveSatelliteColor(i);
                 this.mesh.setColorAt(i, color);
             }
             this.mesh.instanceColor.needsUpdate = true;
@@ -184,25 +174,44 @@ export class SatelliteManager {
         }
     }
 
-    _updateSingleColorInternal(index) {
-        if (index === this.selectedIndex || index === this.hoveredIndex) {
-            this._tempColor.setHex(0x00ff00); // Green for selected/hovered
-        } else {
-            const item = this.satelliteData[index];
-            const name = item[1] || '';
-            const mm = item[8]; // Mean Motion
+    _resolveSatelliteColor(index, isHovered = false, isSelected = false) {
+        const item = this.satelliteData[index];
+        const name = item[1] || '';
+        const mm = item[8]; // Mean Motion
 
-            if (name.includes('STARLINK')) {
-                this._tempColor.setHex(0xbbbbff); // Premium Purple for Starlink
-            } else if (mm >= 11.25) {
-                this._tempColor.setHex(0xffffff); // LEO - White
-            } else if (mm > 1.0027) {
-                this._tempColor.setHex(0xffff00); // MEO - Yellow
-            } else {
-                this._tempColor.setHex(0xff0000); // HEO - Red
-            }
+        // Base color determination
+        let baseColorHex;
+        if (name.includes('STARLINK')) {
+            baseColorHex = 0x90EE90; // Emerald 
+        } else if (mm >= 11.25) {
+            baseColorHex = 0xffffff; // LEO - White
+        } else if (mm > 1.0027) {
+            baseColorHex = 0xffff00; // MEO - Yellow
+        } else {
+            baseColorHex = 0xff0000; // HEO - Red
         }
-        this.mesh.setColorAt(index, this._tempColor);
+
+        if (isSelected || isHovered) {
+            // Special hover color for Starlink to avoid green-on-green confusion
+            if (name.includes('STARLINK')) {
+                this._tempColor.setHex(0x00ffff); // Cyan hover for Starlink
+            } else {
+                this._tempColor.setHex(0x00ff00); // Standard Green hover
+            }
+        } else {
+            this._tempColor.setHex(baseColorHex);
+        }
+
+        return this._tempColor;
+    }
+
+    _updateSingleColorInternal(index) {
+        const color = this._resolveSatelliteColor(
+            index,
+            index === this.hoveredIndex,
+            index === this.selectedIndex
+        );
+        this.mesh.setColorAt(index, color);
     }
 
     updateSingleSatelliteColor(index) {

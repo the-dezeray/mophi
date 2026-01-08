@@ -69,7 +69,17 @@ export function createUI(handlers, demoEnabled = true) {
   `;
   document.body.appendChild(viewModeSelector);
 
-  // Orbit Legend (removed for a cleaner, more mobile-friendly UI)
+  // Orbit Legend
+  const orbitLegend = document.createElement('div');
+  orbitLegend.id = 'orbit-legend';
+  orbitLegend.className = 'glass';
+  orbitLegend.innerHTML = `
+    <div class="legend-item"><span class="dot leo"></span> LEO (Low)</div>
+    <div class="legend-item"><span class="dot meo"></span> MEO (Mid)</div>
+    <div class="legend-item"><span class="dot heo"></span> HEO (High)</div>
+    <div class="legend-item"><span class="dot starlink"></span> Starlink</div>
+  `;
+  document.body.appendChild(orbitLegend);
 
   // Main Controls Panel
   const controlsPanel = document.createElement('div');
@@ -130,6 +140,7 @@ export function createUI(handlers, demoEnabled = true) {
     zoomControls,
     actionButtons,
     viewModeSelector,
+    orbitLegend,
     controlsPanel,
     trackingCard
   };

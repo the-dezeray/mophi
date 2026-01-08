@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/image.png" alt="MOPHI Satellite Tracker" width="100%">
+  <img src="docs/image.jpg" alt="MOPHI Satellite Tracker" width="100%">
 </p>
 
 <h1 align="center">MOPHI</h1>

@@ -1,8 +1,9 @@
 import json
 from datetime import datetime
 import os
+import urllib.request
 
-def map_extreme_min(input_file, output_file):
+def map_extreme_min(source, output_file):
     """
     Extremely minifies satellite data for high-performance Vite applications.
     - Uses arrays instead of objects (saves key repetition)
@@ -10,12 +11,17 @@ def map_extreme_min(input_file, output_file):
     - Converts Epoch to Unix Timestamps
     - Removes all whitespace
     """
-    if not os.path.exists(input_file):
-        print(f"Error: {input_file} not found.")
-        return
+    if source.startswith('http'):
+        print(f"Downloading data from {source}...")
+        with urllib.request.urlopen(source) as response:
+            data = json.loads(response.read().decode())
+    else:
+        if not os.path.exists(source):
+            print(f"Error: {source} not found.")
+            return
 
-    with open(input_file, 'r') as f:
-        data = json.load(f)
+        with open(source, 'r') as f:
+            data = json.load(f)
 
     minified = []
     for s in data:
@@ -48,15 +54,14 @@ def map_extreme_min(input_file, output_file):
     with open(output_file, 'w') as f:
         json.dump(minified, f, separators=(',', ':'))
 
-    original_size = os.path.getsize(input_file) / 1024
     new_size = os.path.getsize(output_file) / 1024
     print(f"Success!")
-    print(f"Original: {original_size:.2f} KB")
-    print(f"Minified: {new_size:.2f} KB")
-    print(f"Reduction: {100 - (new_size/original_size*100):.1f}%")
+    print(f"Minified size: {new_size:.2f} KB")
 
 if __name__ == "__main__":
-    base_dir = r"c:\Users\gasen\Downloads\dev\python\s"
-    input_path = os.path.join(base_dir, "active.json")
-    output_path = os.path.join(base_dir, "minified.json")
-    map_extreme_min(input_path, output_path)
+    url = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=json"
+    # Get the directory of the current script
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(current_dir, "minified.json")
+    
+    map_extreme_min(url, output_path)
